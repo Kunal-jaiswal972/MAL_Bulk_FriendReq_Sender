@@ -3,12 +3,16 @@ import chalk from "chalk";
 
 const sleep = (time) => new Promise((resolve) => setTimeout(resolve, time));
 
+const browserWSEndpoint = process.argv[2];
+
+if (!browserWSEndpoint) {
+  console.error(chalk.red("❌ Error: No WebSocket Debugger URL provided."));
+  process.exit(1);
+}
+
 (async () => {
   try {
-    const browser = await puppeteer.connect({
-      browserWSEndpoint:
-        "ws://127.0.0.1:9222/devtools/browser/ec0aca69-5a73-4761-8f7d-a97d995e8351",
-    });
+    const browser = await puppeteer.connect({ browserWSEndpoint });
 
     const page = await browser.newPage();
 
