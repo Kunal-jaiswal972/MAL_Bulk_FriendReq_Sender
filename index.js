@@ -1,7 +1,7 @@
 import puppeteer from "puppeteer-core";
 import chalk from "chalk";
-
-const sleep = (time) => new Promise((resolve) => setTimeout(resolve, time));
+import { sleep, askQuestion, waitForInternet } from "./lib/utils.js";
+import isOnline from "is-online";
 
 const browserWSEndpoint = process.argv[2];
 
@@ -12,8 +12,15 @@ if (!browserWSEndpoint) {
 
 (async () => {
   try {
-    const browser = await puppeteer.connect({ browserWSEndpoint });
+    let userName = await askQuestion(
+      chalk.yellow("Enter MAL username (default: Ashhk): ")
+    );
+    if (!userName) {
+      userName = "Ashhk";
+      console.log(chalk.blue(`Using default username: ${userName}`));
+    }
 
+    const browser = await puppeteer.connect({ browserWSEndpoint });
     const page = await browser.newPage();
 
     const { width, height } = await page.evaluate(() => ({
@@ -22,27 +29,26 @@ if (!browserWSEndpoint) {
     }));
     await page.setViewport({ width, height });
 
-    const userName = "EdySilva";
     const friendsPage = `https://myanimelist.net/profile/${userName}/friends`;
-
     console.log(chalk.blue(`📌 Visiting Friends List: ${friendsPage}`));
-    await page.goto(friendsPage, { waitUntil: "domcontentloaded" });
 
+    while (!(await isOnline())) await waitForInternet();
+    await page.goto(friendsPage, { waitUntil: "domcontentloaded" });
     await sleep(2000);
 
-    const hrefs = await page.evaluate(() => {
-      return Array.from(
+    const hrefs = await page.evaluate(() =>
+      Array.from(
         document.querySelectorAll(".di-tc.va-t.pl8.data .title a")
-      ).map((a) => a.href);
-    });
+      ).map((a) => a.href)
+    );
 
     console.log(chalk.green(`✅ Extracted ${hrefs.length} Profile Links.`));
 
     for (const href of hrefs) {
       try {
         console.log(chalk.cyan(`🔗 Visiting Profile: ${href}`));
+        while (!(await isOnline())) await waitForInternet();
         await page.goto(href, { waitUntil: "domcontentloaded" });
-
         await sleep(2000);
 
         const friendLink = await page.evaluate(() => {
@@ -54,8 +60,8 @@ if (!browserWSEndpoint) {
           console.log(
             chalk.blue(`📌 Navigating to Add Friend Page: ${friendLink}`)
           );
+          while (!(await isOnline())) await waitForInternet();
           await page.goto(friendLink, { waitUntil: "domcontentloaded" });
-
           await sleep(2000);
 
           const clicked = await page.evaluate(() => {
