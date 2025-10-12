@@ -98,3 +98,9 @@ Then, restart Chrome with debugging enabled.
 ## 🎯 Conclusion
 By running `npm run start`, the batch script automates all the necessary steps. If you face issues, follow the manual debugging instructions above to troubleshoot effectively.
 
+
+
+https://code.visualstudio.com/docs/debugtest/debugging-configuration#_launch-configurations <- try to configure
+https://code.visualstudio.com/docs/nodejs/browser-debugging#_attaching-to-browsers <- try to configure
+https://developer.chrome.com/blog/remote-debugging-port <- reason (not sure)
+https://developer.chrome.com/blog/chrome-for-testing <- maybe what we need
