@@ -3,9 +3,9 @@ echo Closing all Chrome instances...
 taskkill /F /IM chrome.exe >nul 2>&1
 
 echo Starting Chrome with remote debugging...
-@REM start "" "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\Users\user\AppData\Local\Google\Chrome\User Data" --profile-directory="Profile 2"
+start "" chrome.exe --remote-debugging-port=9222 --user-data-dir="C:\Users\user\AppData\Local\Google\Chrome\User Data" --profile-directory="Profile 2"
 @REM below will open chrome in debug mode if user data is not for real profile so i copied profile 2 in E drive
-start "" chrome.exe --remote-debugging-port=9222 --user-data-dir="E:\debugChromeProfile"
+@REM start "" chrome.exe --remote-debugging-port=9222 --user-data-dir="E:\debugChromeProfile"
 
 
 echo Waiting for Chrome to start...
