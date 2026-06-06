@@ -314,16 +314,18 @@ async function getFriendRequestStatus(page, profileUrl) {
   }
 }
 
-/** Visits one friend's profile and processes its friend button. */
-export async function processProfileLink(page, profileUrl) {
+/** Visits one friend's profile and processes its friend button. `done`/`total` drive the progress count. */
+export async function processProfileLink(page, profileUrl, done, total) {
   try {
-    console.log(chalk.cyan(` 🔗 Visiting profile: ${profileUrl}`));
+    console.log(chalk.cyan(` 🔗 Visiting profile (${done}/${total}): ${profileUrl}`));
     await ensureOnline();
     await page.goto(profileUrl, { waitUntil: "domcontentloaded" });
     await sleep(CONFIG.delays.pageSettle);
     await getFriendRequestStatus(page, profileUrl);
   } catch (error) {
     console.error(chalk.bgRed.white(` ❌ Error visiting profile ${profileUrl}:`), error);
+  } finally {
+    console.log(chalk.green(` ✅ Completed (${done + 1}/${total})`));
   }
 }
 

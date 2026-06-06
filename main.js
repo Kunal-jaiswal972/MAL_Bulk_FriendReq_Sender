@@ -26,8 +26,9 @@ registerShutdownHandlers();
     console.log(chalk.cyanBright(" 🚀 Fetching all friend profiles..."));
     const profileLinks = await fetchFriendProfileLinks(page, username);
 
-    for (const profileUrl of profileLinks) {
-      await processProfileLink(page, profileUrl);
+    const total = profileLinks.length;
+    for (let i = 0; i < total; i++) {
+      await processProfileLink(page, profileLinks[i], i, total);
       console.log(
         chalk.gray(` ⏳ Waiting ${CONFIG.delays.betweenProfiles / 1000}s before the next profile...`)
       );
