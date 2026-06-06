@@ -57,8 +57,8 @@ const CHROME_PATH_CANDIDATES = [
     path.join(process.env.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe"),
 ].filter(Boolean);
 
-/** Absolute path to the local state file (lives next to this script). */
-const STATE_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), CONFIG.stateFile);
+/** Absolute path to the local state file (kept at the project root, next to main.js). */
+const STATE_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", CONFIG.stateFile);
 
 // Holds the connected browser so the shutdown handlers can close it.
 let browser;

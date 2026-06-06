@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { sleep } from "./lib/utils.js";
+import { sleep } from "./src/lib/utils.js";
 import {
   CONFIG,
   launchChromeAndConnect,
@@ -9,7 +9,7 @@ import {
   processProfileLink,
   closeBrowser,
   registerShutdownHandlers,
-} from "./script.js";
+} from "./src/script.js";
 
 // Close Chrome on Ctrl+C / termination, not just on normal completion.
 registerShutdownHandlers();

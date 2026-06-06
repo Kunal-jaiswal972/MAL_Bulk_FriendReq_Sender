@@ -149,7 +149,7 @@ runs you can just press Enter to reuse it:
 
 ## ⚙️ Configuration
 
-All tunables live in the `CONFIG` object at the top of [`script.js`](script.js):
+All tunables live in the `CONFIG` object at the top of [`src/script.js`](src/script.js):
 
 | Setting | What it controls |
 |---------|------------------|
@@ -235,7 +235,7 @@ debugging behavior. See https://developer.chrome.com/blog/chrome-for-testing.
 
 | File | Purpose |
 |------|---------|
-| `main.js` | Entry point: the orchestration IIFE (`npm start` runs this). |
-| `script.js` | Config (`CONFIG`) + all app logic: launch/connect Chrome, login + username handling, scrape friends, send requests, and close Chrome on exit. |
-| `lib/utils.js` | Pure, reusable helpers: `sleep`, `askQuestion`, `closeActivePrompt`, `ensureOnline`. |
-| `.mal-bot-state.json` | *(generated, gitignored)* remembers `isLoggedIn` and the last-used username. Delete it to reset/switch accounts. |
+| `main.js` | Entry point at the project root: the orchestration IIFE (`npm start` runs this). |
+| `src/script.js` | Config (`CONFIG`) + all app logic: launch/connect Chrome, login + username handling, scrape friends, send requests, and close Chrome on exit. |
+| `src/lib/utils.js` | Pure, reusable helpers: `sleep`, `askQuestion`, `closeActivePrompt`, `ensureOnline`. |
+| `.mal-bot-state.json` | *(generated at root, gitignored)* remembers `isLoggedIn` and the last-used username. Delete it to reset/switch accounts. |
