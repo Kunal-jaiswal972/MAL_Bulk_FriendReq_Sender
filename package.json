@@ -1,11 +1,11 @@
 {
   "name": "mal-bulk-fr-sender",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "main.js",
   "type": "module",
   "scripts": {
-    "dev": "node index.js",
-    "start": "cmd /c script.bat"
+    "dev": "node main.js",
+    "start": "node main.js"
   },
   "keywords": [],
   "author": "",

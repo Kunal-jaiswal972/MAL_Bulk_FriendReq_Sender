@@ -14,7 +14,6 @@ dist-ssr
 
 # Chrome for Testing (downloaded via @puppeteer/browsers, see readme fallback)
 chrome
-ws_temp.json
 
 # Editor directories and files
 .vscode/*
