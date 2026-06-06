@@ -35,6 +35,7 @@ export const CONFIG = {
     loginPassword: "#login-password",
     loginRemember: "input[name='cookie']",
     loginSubmit: "input[type='submit'].btn-form-submit",
+    loginError: ".badresult", // MAL error box, e.g. "Your username or password is incorrect."
   },
 
   delays: {
@@ -246,6 +247,14 @@ async function autoLogin(page, username, password) {
   ]);
   console.log(chalk.gray(" ⌛ Waiting for MAL to respond..."));
   await sleep(CONFIG.delays.pageSettle);
+
+  // If login failed, MAL re-renders login.php with an error box. Surface it now,
+  // before verifyLoggedIn() navigates away.
+  const error = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    return el ? el.textContent.trim() : "";
+  }, CONFIG.selectors.loginError);
+  if (error) console.log(chalk.bgRed.white(` ❌ MAL login error: ${error} `));
 }
 
 /** Prompts the user to log in by hand, used when there are no env creds or auto-login fails. */

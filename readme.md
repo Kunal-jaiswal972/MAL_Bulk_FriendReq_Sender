@@ -135,7 +135,9 @@ first run, `ensureLoggedIn()` works through this order:
    with a random 100–1000 ms pause** (with a random pause before clicking **Login**)
    to look human. Each step is logged in color. It then **confirms login by loading
    `login.php` and checking it redirects to the home page** (MAL only redirects away
-   from `login.php` when logged in). On success the session is saved.
+   from `login.php` when logged in). On success the session is saved. If MAL rejects
+   the credentials, its error (e.g. *"Your username or password is incorrect."*) is
+   printed in red in the terminal.
 4. **Manual fallback** — if there's no `.env`, or auto-login doesn't go through, it
    opens the login page and waits for you to log in by hand, then verifies the same way.
 
