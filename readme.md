@@ -8,6 +8,11 @@ you stay logged in as yourself and never re-enter credentials.
 Everything (launching Chrome, finding the debug endpoint, scraping, and cleanup)
 runs in Node — there's no batch file or manual setup.
 
+> 🌿 **Server version (WIP):** an experimental Express server with a web UI and
+> multi-user (per-account) support lives on the **`server`** branch. It's not
+> finished — the server code still needs work before it's usable. This `main`
+> branch is the working CLI.
+
 ---
 
 ## ⚡ Quick start
