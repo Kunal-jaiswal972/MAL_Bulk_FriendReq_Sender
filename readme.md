@@ -41,10 +41,11 @@ npm start ─▶ node main.js          (orchestration only)
                │                 --user-data-dir=<dedicated debug profile>
                ├─ poll http://127.0.0.1:9222/json/version → webSocketDebuggerUrl
                └─ puppeteer.connect(...) → { browser, page }
-          2. prompt for a MAL username
-          3. fetchFriendProfileLinks(page, username)
-          4. for each friend → processProfileLink() → click "Add Friend"
-          5. on finish / error / Ctrl+C → closeBrowser()   (next run starts fresh)
+          2. ensureLoggedIn(page)   → first run only: open MAL login, wait, remember
+          3. resolveUsername()      → prompt (defaults to your last-used name)
+          4. fetchFriendProfileLinks(page, username)
+          5. for each friend → processProfileLink() → click "Add Friend"
+          6. on finish / error / Ctrl+C → closeBrowser()   (next run starts fresh)
 ```
 
 **Clean exit:** `script.js` closes the Chrome it launched whenever the run ends —
@@ -111,26 +112,38 @@ What happens:
 1. `main.js` calls `launchChromeAndConnect()` in `script.js`, which closes any old
    debug-profile Chrome, launches a fresh one with remote debugging on the
    dedicated profile, waits for the endpoint, and connects Puppeteer.
-2. You're prompted for a MAL username (Enter alone uses the default).
-3. It scrapes that user's friends list and sends a friend request to each friend.
-4. Chrome closes when the run ends (success, error, or `Ctrl+C`), so the next run
+2. **First run only:** it opens the MAL login page and waits for you to log in.
+3. You're prompted for a MAL username (the target whose friends get requests).
+4. It scrapes that user's friends list and sends a friend request to each friend.
+5. Chrome closes when the run ends (success, error, or `Ctrl+C`), so the next run
    starts from a fresh browser.
 
 ### First-run login (one time only)
 
-The debug profile starts out **not logged into MAL**, and Chrome opens *before*
-the username prompt — so the login fits naturally into the flow:
+The app tracks login state in a local, gitignored file (`.mal-bot-state.json`):
 
-1. Run `npm start`. A fresh Chrome window opens **and** the terminal shows
-   `Enter MAL username`.
-2. **Before typing**, switch to that Chrome window and log into
-   [myanimelist.net](https://myanimelist.net) with the account you want to send
-   requests *from*.
-3. Switch back, type the target username, and press Enter. The run proceeds
-   (authenticated) and closes Chrome when finished.
+- **First ever run** — the app opens [myanimelist.net/login.php](https://myanimelist.net/login.php)
+  in the browser and pauses with:
+  `Log into MAL in the opened browser, then press Enter here to continue...`
+  Log in with the account you want to send requests *from*, then press Enter. The
+  login is recorded (`isLoggedIn: true`) and persists on disk in the debug profile.
+- **Every later run** — login is already saved, so it skips straight to the
+  username prompt and request flow.
 
-Every later run opens **already logged in** — you only do this once. (Closing
-Chrome between runs does not log you out.)
+> 🔁 To **switch accounts** or recover from being logged out, delete
+> `.mal-bot-state.json` (and clear the debug profile if you want a clean session) —
+> the next run will prompt you to log in again.
+
+### The username prompt
+
+You must enter a MAL username — there's no hard-coded default. The last name you
+used is remembered (in `.mal-bot-state.json`) and shown as the default, so on later
+runs you can just press Enter to reuse it:
+
+```
+📝 Enter MAL username:                       ← first time (input required)
+📝 Enter MAL username (default: SomeUser):   ← later (Enter reuses SomeUser)
+```
 
 ---
 
@@ -140,8 +153,8 @@ All tunables live in the `CONFIG` object at the top of [`script.js`](script.js):
 
 | Setting | What it controls |
 |---------|------------------|
-| `defaultUsername` | Username used when you press Enter at the prompt. |
 | `debuggingPort` | Chrome remote-debugging port (default `9222`). |
+| `stateFile` | Name of the local state file (login flag + last-used username). |
 | `debugProfileDir` | The dedicated profile path you log into MAL once. |
 | `malBaseUrl` | MAL base URL. |
 | `selectors` | CSS selectors for the friends list, friend button, and submit button — update these if MAL changes its markup. |
@@ -223,5 +236,6 @@ debugging behavior. See https://developer.chrome.com/blog/chrome-for-testing.
 | File | Purpose |
 |------|---------|
 | `main.js` | Entry point: the orchestration IIFE (`npm start` runs this). |
-| `script.js` | Config (`CONFIG`) + all app logic: launch/connect Chrome, get the WS URL, scrape friends, send requests, and close Chrome on exit. |
+| `script.js` | Config (`CONFIG`) + all app logic: launch/connect Chrome, login + username handling, scrape friends, send requests, and close Chrome on exit. |
 | `lib/utils.js` | Pure, reusable helpers: `sleep`, `askQuestion`, `closeActivePrompt`, `ensureOnline`. |
+| `.mal-bot-state.json` | *(generated, gitignored)* remembers `isLoggedIn` and the last-used username. Delete it to reset/switch accounts. |

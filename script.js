@@ -1,16 +1,19 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { fileURLToPath } from "url";
 import { spawn, execSync } from "child_process";
 import puppeteer from "puppeteer-core";
 import chalk from "chalk";
-import { sleep, closeActivePrompt, ensureOnline } from "./lib/utils.js";
+import { sleep, askQuestion, closeActivePrompt, ensureOnline } from "./lib/utils.js";
 
 // ───────────────────────────── Configuration ─────────────────────────────
 
 export const CONFIG = {
-  defaultUsername: "Ashhk",
   debuggingPort: 9222,
+
+  // Local, gitignored file remembering login state + the last username used.
+  stateFile: ".mal-bot-state.json",
 
   // Dedicated, non-default profile (Chrome 136+ blocks remote debugging on the
   // default "User Data" dir). Log into MAL here once.
@@ -54,9 +57,34 @@ const CHROME_PATH_CANDIDATES = [
     path.join(process.env.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe"),
 ].filter(Boolean);
 
+/** Absolute path to the local state file (lives next to this script). */
+const STATE_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), CONFIG.stateFile);
+
 // Holds the connected browser so the shutdown handlers can close it.
 let browser;
 let cleaningUp = false;
+
+// ───────────────────────── Persisted state (local) ───────────────────────
+
+/** Reads the state file, returning {} if it's missing or unreadable. */
+function loadState() {
+  try {
+    return JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+/** Merges `patch` into the saved state and writes it back. */
+function saveState(patch) {
+  const next = { ...loadState(), ...patch };
+  try {
+    fs.writeFileSync(STATE_FILE, JSON.stringify(next, null, 2));
+  } catch (error) {
+    console.error(chalk.bgRed.white(" ❌ Could not write state file:"), error.message);
+  }
+  return next;
+}
 
 // ─────────────────────────── Chrome bootstrap ────────────────────────────
 
@@ -144,6 +172,48 @@ export async function launchChromeAndConnect() {
   await page.setViewport({ width, height });
 
   return { browser, page };
+}
+
+// ───────────────────────── Session & username ────────────────────────────
+
+/** On first ever run, opens the MAL login page and waits; remembers login after. */
+export async function ensureLoggedIn(page) {
+  if (loadState().isLoggedIn) {
+    console.log(chalk.green(" ✅ Already logged in (saved from a previous run)."));
+    return;
+  }
+
+  console.log(chalk.cyanBright(" 🔑 First run — opening the MAL login page..."));
+  await ensureOnline();
+  await page.goto(`${CONFIG.malBaseUrl}/login.php`, { waitUntil: "domcontentloaded" });
+
+  await askQuestion(
+    chalk.yellow(" 🔑 Log into MAL in the opened browser, then press Enter here to continue... ")
+  );
+
+  saveState({ isLoggedIn: true });
+  console.log(chalk.green(" ✅ Login saved — future runs will skip this step."));
+}
+
+/**
+ * Always prompts for a MAL username. Falls back to the last-used name when the
+ * input is empty, and requires one the first time (no built-in default).
+ */
+export async function resolveUsername() {
+  const stored = loadState().lastUsername;
+
+  let username;
+  while (!username) {
+    const prompt = stored
+      ? ` 📝 Enter MAL username (default: ${stored}): `
+      : " 📝 Enter MAL username: ";
+    const answer = await askQuestion(chalk.yellow(prompt));
+    username = answer || stored;
+    if (!username) console.log(chalk.red(" ⚠️ A username is required — please enter one."));
+  }
+
+  saveState({ lastUsername: username });
+  return username;
 }
 
 // ──────────────────────── Scraping & friend requests ─────────────────────

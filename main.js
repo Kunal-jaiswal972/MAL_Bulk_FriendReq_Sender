@@ -1,8 +1,10 @@
 import chalk from "chalk";
-import { askQuestion, sleep } from "./lib/utils.js";
+import { sleep } from "./lib/utils.js";
 import {
   CONFIG,
   launchChromeAndConnect,
+  ensureLoggedIn,
+  resolveUsername,
   fetchFriendProfileLinks,
   processProfileLink,
   closeBrowser,
@@ -14,17 +16,12 @@ registerShutdownHandlers();
 
 (async () => {
   try {
-    // Launch + connect FIRST so the Chrome window is open while we prompt — on the
-    // first run you can log into MAL in that window before entering a username.
     const { page } = await launchChromeAndConnect();
 
-    let username = await askQuestion(
-      chalk.yellow(` 📝 Enter MAL username (default: ${CONFIG.defaultUsername}): `)
-    );
-    if (!username) {
-      username = CONFIG.defaultUsername;
-      console.log(chalk.blue(` 🔹 Using default username: ${username}`));
-    }
+    // First run: log into MAL. Later runs skip straight to the request flow.
+    await ensureLoggedIn(page);
+
+    const username = await resolveUsername();
 
     console.log(chalk.cyanBright(" 🚀 Fetching all friend profiles..."));
     const profileLinks = await fetchFriendProfileLinks(page, username);

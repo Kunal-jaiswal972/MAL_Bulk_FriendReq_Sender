@@ -15,6 +15,9 @@ dist-ssr
 # Chrome for Testing (downloaded via @puppeteer/browsers, see readme fallback)
 chrome
 
+# Local runtime state (login flag + last-used username)
+.mal-bot-state.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
