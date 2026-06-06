@@ -1,53 +1,66 @@
 import chalk from "chalk";
-import { sleep } from "./src/lib/utils.js";
-import {
-  CONFIG,
-  launchChromeAndConnect,
-  ensureLoggedIn,
-  resolveUsername,
-  fetchFriendProfileLinks,
-  processProfileLink,
-  closeBrowser,
-  registerShutdownHandlers,
-} from "./src/script.js";
+import { askQuestion } from "./src/lib/utils.js";
+import { MalSession, registerShutdownHandlers } from "./src/script.js";
 
-// Load MAL_USERNAME / MAL_PASSWORD from .env (used for automatic login). Optional —
-// if there's no .env, login falls back to manual.
+// Load MAL_USERNAME / MAL_PASSWORD / HEADLESS from .env (optional).
 try {
   process.loadEnvFile();
 } catch {
   // no .env file present
 }
 
-// Close Chrome on Ctrl+C / termination, not just on normal completion.
 registerShutdownHandlers();
 
+/** Renders a progress event as a colored console line. */
+function logEvent(ev) {
+  switch (ev.type) {
+    case "start":
+      console.log(chalk.cyanBright(` 🚀 Found ${ev.total} friends of ${ev.target}.`));
+      break;
+    case "visiting":
+      console.log(chalk.cyan(` 🔗 Visiting profile (${ev.done}/${ev.total}): ${ev.url}`));
+      break;
+    case "completed":
+      console.log(chalk.green(` ✅ Completed (${ev.done}/${ev.total}) — ${ev.status}`));
+      break;
+    case "done":
+      console.log(chalk.bgGreen.black(" ✅ All friend requests processed! "));
+      break;
+  }
+}
+
 (async () => {
+  const loginUsername = process.env.MAL_USERNAME || "default";
+  const session = new MalSession(loginUsername);
   try {
-    const { page } = await launchChromeAndConnect();
+    await session.launch();
 
-    // First run: log into MAL. Later runs skip straight to the request flow.
-    await ensureLoggedIn(page);
+    const result = await session.ensureLoggedIn({
+      password: process.env.MAL_PASSWORD,
+      allowManual: true, // CLI is interactive, so manual fallback is allowed
+    });
+    if (!result.ok) throw new Error(result.error);
 
-    const username = await resolveUsername();
+    // Always prompt for the target username; default to the last one used.
+    const stored = session.loadState().lastTarget;
+    let target;
+    while (!target) {
+      const answer = await askQuestion(
+        chalk.yellow(stored ? ` 📝 Enter MAL username (default: ${stored}): ` : " 📝 Enter MAL username: ")
+      );
+      target = answer || stored;
+      if (!target) console.log(chalk.red(" ⚠️ A username is required — please enter one."));
+    }
+    session.saveState({ lastTarget: target });
 
     console.log(chalk.cyanBright(" 🚀 Fetching all friend profiles..."));
-    const profileLinks = await fetchFriendProfileLinks(page, username);
-
-    const total = profileLinks.length;
-    for (let i = 0; i < total; i++) {
-      await processProfileLink(page, profileLinks[i], i, total);
-      console.log(
-        chalk.gray(` ⏳ Waiting ${CONFIG.delays.betweenProfiles / 1000}s before the next profile...`)
-      );
-      await sleep(CONFIG.delays.betweenProfiles);
+    for await (const ev of session.runFriendRequests(target)) {
+      logEvent(ev);
     }
-
-    console.log(chalk.bgGreen.black(" ✅ All friend requests sent! "));
   } catch (mainError) {
     process.exitCode = 1;
-    console.error(chalk.bgRed.white(" ❌ Error in main: "), mainError);
+    console.error(chalk.bgRed.white(" ❌ Error: "), mainError.message || mainError);
   } finally {
-    await closeBrowser("run finished");
+    await session.close();
   }
 })();

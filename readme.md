@@ -174,22 +174,61 @@ runs you can just press Enter to reuse it:
 | `MAL_USERNAME` | MAL account username for auto-login. |
 | `MAL_PASSWORD` | MAL account password for auto-login. |
 | `HEADLESS` | `true`/`1`/`yes`/`on` runs Chrome with no visible window (servers / prod). Requires the credentials above — manual login needs a window. |
+| `PORT` | Port for the Express server (`npm run server`). Default `3000`. |
 
-Copy `.env.example` → `.env` and fill these in. Leave the credentials out to use manual login.
+Copy `.env.example` → `.env` and fill these in. Leave the credentials out to use manual login (CLI only).
 
 **Everything else** lives in the `CONFIG` object at the top of [`src/script.js`](src/script.js):
 
 | Setting | What it controls |
 |---------|------------------|
-| `debuggingPort` | Chrome remote-debugging port (default `9222`). |
-| `stateFile` | Name of the local state file (login flag + last-used username). |
-| `debugProfileDir` | The dedicated profile path you log into MAL once. |
+| `profilesBaseDir` | Base folder for **per-user** Chrome profiles (`<base>/<username>`); each MAL account keeps its own login session. |
+| `stateDir` | Folder for **per-user** state files (`.mal-state/<username>.json`). |
 | `malBaseUrl` | MAL base URL. |
 | `selectors` | CSS selectors for the friends list, friend button, submit button, and **login form** (username/password/remember/submit) — update if MAL changes its markup. |
 | `delays` | All pacing/timeouts: between profiles, after a request, page settle, and the human-typing ranges (`typeMin`/`typeMax`, `beforeSubmitMin`/`beforeSubmitMax`). |
-| `wsFetchRetries` | How many times to poll the debugging endpoint before giving up. |
+| `wsFetchRetries` | How many times to poll a Chrome debugging endpoint before giving up. |
 
-Chrome install locations are in `CHROME_PATH_CANDIDATES` just below `CONFIG`.
+Chrome install locations are in `CHROME_PATH_CANDIDATES` just below `CONFIG`. Each session
+gets its **own free debug port** automatically, so multiple users can run at once.
+
+---
+
+## 🖥️ Server mode (multi-user, web UI)
+
+As an alternative to the CLI, run an Express server with a small web UI:
+
+```sh
+npm run server     # http://localhost:3000  (set PORT to change)
+```
+
+Flow:
+
+1. Open the page → **log in** with the sending account's MAL username + password
+   (`POST /login`). The server launches a Chrome instance for that account and logs in.
+2. On success you get a form to enter the **target** username; on failure you get an
+   **error page** with MAL's reason (e.g. wrong password, or a captcha/rate-limit).
+3. Submit the target → the page streams **live progress** (`X/total`, per-profile
+   status) over Server-Sent Events while requests are sent.
+
+**Per-user isolation.** Each MAL account is a separate `MalSession` with its own:
+- Chrome profile under `profilesBaseDir/<username>` (its login persists there),
+- state file `.mal-state/<username>.json`,
+- Chrome instance on its own auto-assigned debug port.
+
+So **multiple users run concurrently** without colliding. Sessions are reused across
+requests and closed after 15 min idle (or on server shutdown).
+
+**Login on the server is headless + auto-login only.** Set `HEADLESS=true` for a
+real server. Because MAL login is reCAPTCHA-protected, a headless auto-login can be
+challenged — when that happens the user simply gets the error page (no manual
+fallback without a display). Manual login remains a **CLI/local** convenience (run
+the CLI headed once to seed that account's profile; the server then reuses it).
+
+> 🔒 **Security:** the server has no auth of its own and the run stream is keyed by
+> an in-memory session token passed in the `/run` URL (the password is only ever in
+> the `POST /login` body, never in a URL). Run it locally or behind your own
+> auth/reverse-proxy — don't expose it raw to the internet.
 
 ---
 
@@ -265,9 +304,11 @@ debugging behavior. See https://developer.chrome.com/blog/chrome-for-testing.
 
 | File | Purpose |
 |------|---------|
-| `main.js` | Entry point at the project root: the orchestration IIFE (`npm start` runs this). |
-| `src/script.js` | Config (`CONFIG`) + all app logic: launch/connect Chrome, login + username handling, scrape friends, send requests, and close Chrome on exit. |
-| `src/lib/utils.js` | Pure, reusable helpers: `sleep`, `askQuestion`, `closeActivePrompt`, `ensureOnline`. |
-| `.env.example` | Template for login credentials — copy to `.env` and fill in. |
-| `.env` | *(you create it, gitignored)* `MAL_USERNAME` / `MAL_PASSWORD` for auto-login. |
-| `.mal-bot-state.json` | *(generated at root, gitignored)* remembers `isLoggedIn` and the last-used username. Delete it to reset/switch accounts. |
+| `main.js` | CLI entry point (`npm start`): one `MalSession`, interactive target prompt, console progress. |
+| `server.js` | Express server (`npm run server`): `POST /login` → target form / error page; `GET /run` → SSE progress. Per-user sessions + web UI. |
+| `src/script.js` | Config (`CONFIG`) + the `MalSession` class: launch/connect Chrome, login, scrape friends, stream requests, close. |
+| `src/lib/utils.js` | Pure, reusable helpers: `sleep`, `randomInt`, `askQuestion`, `closeActivePrompt`, `ensureOnline`. |
+| `.env.example` | Template for `.env` — copy and fill in. |
+| `.env` | *(you create it, gitignored)* `MAL_USERNAME` / `MAL_PASSWORD` / `HEADLESS` / `PORT`. |
+| `.mal-state/<user>.json` | *(generated, gitignored)* per-user state (last-used target username). |
+| `profilesBaseDir/<user>` | *(outside the repo)* per-user Chrome profile holding that account's MAL login session. |
