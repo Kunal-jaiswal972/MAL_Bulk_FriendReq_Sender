@@ -11,6 +11,14 @@ import {
   registerShutdownHandlers,
 } from "./src/script.js";
 
+// Load MAL_USERNAME / MAL_PASSWORD from .env (used for automatic login). Optional —
+// if there's no .env, login falls back to manual.
+try {
+  process.loadEnvFile();
+} catch {
+  // no .env file present
+}
+
 // Close Chrome on Ctrl+C / termination, not just on normal completion.
 registerShutdownHandlers();
 

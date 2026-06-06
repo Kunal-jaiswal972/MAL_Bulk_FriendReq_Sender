@@ -30,6 +30,11 @@ export const CONFIG = {
     friendProfileLinks: ".di-tc.va-t.pl8.data .title a",
     friendRequestButton: "#request",
     submitButton: "input[type='submit']",
+    // Login page (myanimelist.net/login.php)
+    loginUsername: "#loginUserName",
+    loginPassword: "#login-password",
+    loginRemember: "input[name='cookie']",
+    loginSubmit: "input[type='submit'].btn-form-submit",
   },
 
   delays: {
@@ -39,6 +44,7 @@ export const CONFIG = {
     postKill: 1000,
     wsFetchInterval: 1000,
     chromeCloseTimeout: 4000,
+    loginAutofillSettle: 2000, // let browser autofill run before we clear + fill
   },
 
   wsFetchRetries: 20,
@@ -176,23 +182,101 @@ export async function launchChromeAndConnect() {
 
 // ───────────────────────── Session & username ────────────────────────────
 
-/** On first ever run, opens the MAL login page and waits; remembers login after. */
-export async function ensureLoggedIn(page) {
-  if (loadState().isLoggedIn) {
-    console.log(chalk.green(" ✅ Already logged in (saved from a previous run)."));
-    return;
-  }
-
-  console.log(chalk.cyanBright(" 🔑 First run — opening the MAL login page..."));
+/** True when logged in: loading login.php redirects away (to home) only when logged in. */
+async function verifyLoggedIn(page) {
   await ensureOnline();
   await page.goto(`${CONFIG.malBaseUrl}/login.php`, { waitUntil: "domcontentloaded" });
+  return !page.url().includes("login.php");
+}
 
+/** Fills the login form from env credentials and submits it. */
+async function autoLogin(page, username, password) {
+  await ensureOnline();
+  await page.goto(`${CONFIG.malBaseUrl}/login.php`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(CONFIG.selectors.loginUsername, { timeout: 10000 });
+
+  // Let the browser / password manager autofill first, then clear those values so
+  // we submit exactly what's in .env (not a stale autofilled login).
+  await sleep(CONFIG.delays.loginAutofillSettle);
+  await page.$eval(CONFIG.selectors.loginUsername, (el) => (el.value = ""));
+  await page.$eval(CONFIG.selectors.loginPassword, (el) => (el.value = ""));
+
+  await page.type(CONFIG.selectors.loginUsername, username);
+  await page.type(CONFIG.selectors.loginPassword, password);
+  // Tick "remember me" so the session persists across runs.
+  await page.evaluate((sel) => {
+    const c = document.querySelector(sel);
+    if (c && !c.checked) c.click();
+  }, CONFIG.selectors.loginRemember);
+
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: "domcontentloaded" }).catch(() => {}),
+    page.click(CONFIG.selectors.loginSubmit),
+  ]);
+  await sleep(CONFIG.delays.pageSettle);
+}
+
+/** Prompts the user to log in by hand, used when there are no env creds or auto-login fails. */
+async function manualLogin(page) {
+  await ensureOnline();
+  await page.goto(`${CONFIG.malBaseUrl}/login.php`, { waitUntil: "domcontentloaded" });
   await askQuestion(
     chalk.yellow(" 🔑 Log into MAL in the opened browser, then press Enter here to continue... ")
   );
+}
 
-  saveState({ isLoggedIn: true });
-  console.log(chalk.green(" ✅ Login saved — future runs will skip this step."));
+/**
+ * Ensures the MAL session is logged in before the request flow.
+ * Order: trust saved flag → reuse an existing session → auto-login from .env
+ * (MAL_USERNAME / MAL_PASSWORD) → fall back to manual login. Persists the flag once confirmed.
+ */
+export async function ensureLoggedIn(page) {
+  // Suffix naming the account from .env, e.g. " as kishu" (empty if MAL_USERNAME unset).
+  const asUser = process.env.MAL_USERNAME ? ` as ${process.env.MAL_USERNAME}` : "";
+
+  if (loadState().isLoggedIn) {
+    console.log(chalk.green(` ✅ Already logged in${asUser} (saved from a previous run).`));
+    return;
+  }
+
+  // The debug profile may already hold a live session (no flag yet).
+  if (await verifyLoggedIn(page)) {
+    saveState({ isLoggedIn: true });
+    console.log(chalk.green(` ✅ Already logged in${asUser} (existing browser session).`));
+    return;
+  }
+
+  const username = process.env.MAL_USERNAME;
+  const password = process.env.MAL_PASSWORD;
+
+  if (username && password) {
+    console.log(chalk.cyanBright(` 🔑 Logging in automatically as ${username}...`));
+    await autoLogin(page, username, password);
+    if (await verifyLoggedIn(page)) {
+      saveState({ isLoggedIn: true });
+      console.log(chalk.green(" ✅ Auto-login succeeded — future runs will skip this step."));
+      return;
+    }
+    console.log(
+      chalk.yellowBright(
+        " ⚠️ Auto-login didn't go through (wrong credentials, or MAL showed a captcha/challenge). Falling back to manual login."
+      )
+    );
+  } else {
+    console.log(
+      chalk.gray(" ℹ️ No MAL_USERNAME / MAL_PASSWORD in .env — using manual login.")
+    );
+  }
+
+  await manualLogin(page);
+  if (await verifyLoggedIn(page)) {
+    saveState({ isLoggedIn: true });
+    console.log(chalk.green(" ✅ Login saved — future runs will skip this step."));
+  } else {
+    console.log(
+      chalk.yellowBright(" ⚠️ Still not detected as logged in — continuing; it'll retry next run.")
+    );
+  }
 }
 
 /**

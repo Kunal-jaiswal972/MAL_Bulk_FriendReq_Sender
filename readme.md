@@ -17,11 +17,16 @@ npm install      # once, after cloning
 npm start        # every time you want to run it  (= node main.js)
 ```
 
-On the **first** run, a fresh Chrome window opens that is **not** logged into MAL.
-While the terminal is waiting at the `Enter MAL username` prompt, switch to that
-Chrome window and log into [myanimelist.net](https://myanimelist.net) with the
-account you want to send requests *from*. Then enter the target username. The login
-is remembered for all future runs.
+For automatic login, copy `.env.example` to `.env` and fill in the MAL account you
+want to send requests *from*:
+
+```sh
+cp .env.example .env     # then edit MAL_USERNAME / MAL_PASSWORD
+```
+
+On the first run the app logs into MAL using those credentials, confirms it landed
+on the home page, and remembers the session for future runs. No `.env`? It falls
+back to manual login (opens the login page and waits for you).
 
 > ℹ️ Built and tested on **Windows**. See [Other platforms](#-other-platforms) for
 > notes on running elsewhere.
@@ -95,7 +100,7 @@ dedicated profile is the clean solution.
 
 ## ✅ Prerequisites
 
-- **Node.js 18+** (uses ES modules and the built-in global `fetch`).
+- **Node.js 20.12+** (uses ES modules, global `fetch`, and `process.loadEnvFile()`).
 - **Google Chrome** installed at a standard location. `script.js` auto-detects it
   via `CHROME_PATH_CANDIDATES` (Program Files, Program Files (x86), LocalAppData).
 
@@ -112,27 +117,35 @@ What happens:
 1. `main.js` calls `launchChromeAndConnect()` in `script.js`, which closes any old
    debug-profile Chrome, launches a fresh one with remote debugging on the
    dedicated profile, waits for the endpoint, and connects Puppeteer.
-2. **First run only:** it opens the MAL login page and waits for you to log in.
+2. **First run only:** it logs into MAL (see below) and confirms the session.
 3. You're prompted for a MAL username (the target whose friends get requests).
 4. It scrapes that user's friends list and sends a friend request to each friend.
 5. Chrome closes when the run ends (success, error, or `Ctrl+C`), so the next run
    starts from a fresh browser.
 
-### First-run login (one time only)
+### Login (first run only)
 
-The app tracks login state in a local, gitignored file (`.mal-bot-state.json`):
+Login state is tracked in a local, gitignored file (`.mal-bot-state.json`). On the
+first run, `ensureLoggedIn()` works through this order:
 
-- **First ever run** — the app opens [myanimelist.net/login.php](https://myanimelist.net/login.php)
-  in the browser and pauses with:
-  `Log into MAL in the opened browser, then press Enter here to continue...`
-  Log in with the account you want to send requests *from*, then press Enter. The
-  login is recorded (`isLoggedIn: true`) and persists on disk in the debug profile.
-- **Every later run** — login is already saved, so it skips straight to the
-  username prompt and request flow.
+1. **Saved flag** — if `isLoggedIn` is already `true`, skip straight to the request flow.
+2. **Existing session** — if the debug profile already has a live MAL session, record it and continue.
+3. **Auto-login from `.env`** — if `MAL_USERNAME` / `MAL_PASSWORD` are set, it fills
+   `login.php` and submits. It then **confirms login by loading `login.php` and checking
+   it redirects to the home page** (MAL only redirects away from `login.php` when
+   logged in). On success the session is saved.
+4. **Manual fallback** — if there's no `.env`, or auto-login doesn't go through, it
+   opens the login page and waits for you to log in by hand, then verifies the same way.
+
+After any successful login, the session persists on disk in the debug profile and
+`isLoggedIn: true` is saved, so later runs skip the whole step.
+
+> ⚠️ MAL's login uses **reCAPTCHA**. Auto-login usually works from your real Chrome
+> profile, but if MAL shows a challenge it will fail verification and fall back to
+> manual login — just complete it once in the window; the session is then remembered.
 
 > 🔁 To **switch accounts** or recover from being logged out, delete
-> `.mal-bot-state.json` (and clear the debug profile if you want a clean session) —
-> the next run will prompt you to log in again.
+> `.mal-bot-state.json` — the next run logs in again (auto from `.env`, or manually).
 
 ### The username prompt
 
@@ -149,7 +162,16 @@ runs you can just press Enter to reuse it:
 
 ## ⚙️ Configuration
 
-All tunables live in the `CONFIG` object at the top of [`src/script.js`](src/script.js):
+**Credentials** — login uses environment variables loaded from `.env` (gitignored):
+
+| Variable | Purpose |
+|----------|---------|
+| `MAL_USERNAME` | MAL account username for auto-login. |
+| `MAL_PASSWORD` | MAL account password for auto-login. |
+
+Copy `.env.example` → `.env` and fill these in. Leave them out to use manual login.
+
+**Everything else** lives in the `CONFIG` object at the top of [`src/script.js`](src/script.js):
 
 | Setting | What it controls |
 |---------|------------------|
@@ -157,7 +179,7 @@ All tunables live in the `CONFIG` object at the top of [`src/script.js`](src/scr
 | `stateFile` | Name of the local state file (login flag + last-used username). |
 | `debugProfileDir` | The dedicated profile path you log into MAL once. |
 | `malBaseUrl` | MAL base URL. |
-| `selectors` | CSS selectors for the friends list, friend button, and submit button — update these if MAL changes its markup. |
+| `selectors` | CSS selectors for the friends list, friend button, submit button, and **login form** (username/password/remember/submit) — update if MAL changes its markup. |
 | `delays` | All pacing/timeouts (between profiles, after a request, page settle, etc.). |
 | `wsFetchRetries` | How many times to poll the debugging endpoint before giving up. |
 
@@ -238,4 +260,6 @@ debugging behavior. See https://developer.chrome.com/blog/chrome-for-testing.
 | `main.js` | Entry point at the project root: the orchestration IIFE (`npm start` runs this). |
 | `src/script.js` | Config (`CONFIG`) + all app logic: launch/connect Chrome, login + username handling, scrape friends, send requests, and close Chrome on exit. |
 | `src/lib/utils.js` | Pure, reusable helpers: `sleep`, `askQuestion`, `closeActivePrompt`, `ensureOnline`. |
+| `.env.example` | Template for login credentials — copy to `.env` and fill in. |
+| `.env` | *(you create it, gitignored)* `MAL_USERNAME` / `MAL_PASSWORD` for auto-login. |
 | `.mal-bot-state.json` | *(generated at root, gitignored)* remembers `isLoggedIn` and the last-used username. Delete it to reset/switch accounts. |
