@@ -1,6 +1,11 @@
 import puppeteer from "puppeteer-core";
 import chalk from "chalk";
-import { sleep, askQuestion, waitForInternet } from "./lib/utils.js";
+import {
+  sleep,
+  askQuestion,
+  waitForInternet,
+  closeActivePrompt,
+} from "./lib/utils.js";
 import isOnline from "is-online";
 
 const browserWSEndpoint = process.argv[2];
@@ -10,6 +15,52 @@ if (!browserWSEndpoint) {
     chalk.bgRed.white(" ❌ Error: No WebSocket Debugger URL provided. ")
   );
   process.exit(1);
+}
+
+let browser; // assigned once connected; used by the cleanup handlers below
+let cleaningUp = false;
+
+/**
+ * Closes the Chrome instance we connected to so the NEXT run starts from a
+ * fresh browser launch. Safe to call repeatedly. The MAL login lives on disk in
+ * the debug profile, so closing the window does NOT log you out.
+ * @param {string} reason - why we're closing (shown in the log line)
+ */
+async function closeBrowser(reason) {
+  if (cleaningUp || !browser) return;
+  cleaningUp = true;
+  try {
+    console.log(
+      chalk.gray(
+        `\n 🧹 Closing Chrome (${reason}) so the next run starts fresh...`
+      )
+    );
+    // Don't let an unresponsive browser hang the exit.
+    await Promise.race([browser.close(), sleep(4000)]);
+  } catch {
+    // best-effort — script.bat's targeted kill is the fallback
+  }
+}
+
+/**
+ * Single shutdown path: restore the terminal (close any open prompt + leave raw
+ * mode), close Chrome, then exit. A second Ctrl+C while this is running forces an
+ * immediate exit (closeBrowser short-circuits via its guard).
+ */
+async function shutdown(reason, code) {
+  closeActivePrompt();
+  try {
+    if (process.stdin.isTTY) process.stdin.setRawMode(false);
+  } catch {
+    // ignore — stdin may not be a TTY (piped/redirected)
+  }
+  await closeBrowser(reason);
+  process.exit(code);
+}
+
+// Close Chrome on Ctrl+C / termination too, not just on normal completion.
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(signal, () => shutdown(signal, signal === "SIGINT" ? 130 : 0));
 }
 
 (async () => {
@@ -22,7 +73,7 @@ if (!browserWSEndpoint) {
       console.log(chalk.blue(` 🔹 Using default username: ${userName}`));
     }
 
-    const browser = await puppeteer.connect({ browserWSEndpoint });
+    browser = await puppeteer.connect({ browserWSEndpoint });
     const page = await browser.newPage();
 
     const { width, height } = await page.evaluate(() => ({
@@ -47,12 +98,12 @@ if (!browserWSEndpoint) {
       await sleep(5000);
     }
 
-    console.log(
-      chalk.bgGreen.black(" ✅ All friend requests sent! Disconnecting... ")
-    );
-    browser.disconnect();
+    console.log(chalk.bgGreen.black(" ✅ All friend requests sent! "));
   } catch (mainError) {
+    process.exitCode = 1;
     console.error(chalk.bgRed.white(" ❌ Error in main function: "), mainError);
+  } finally {
+    await closeBrowser("run finished");
   }
 })();
 
