@@ -5,6 +5,9 @@ import chalk from "chalk";
 /** Resolves after `ms` milliseconds. */
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Random integer in the inclusive range [min, max]. */
+export const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
 let activeRl = null;
 
 /** Prompts on the terminal and resolves with the trimmed answer. */

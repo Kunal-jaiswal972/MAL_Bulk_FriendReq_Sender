@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import { spawn, execSync } from "child_process";
 import puppeteer from "puppeteer-core";
 import chalk from "chalk";
-import { sleep, askQuestion, closeActivePrompt, ensureOnline } from "./lib/utils.js";
+import { sleep, randomInt, askQuestion, closeActivePrompt, ensureOnline } from "./lib/utils.js";
 
 // ───────────────────────────── Configuration ─────────────────────────────
 
@@ -45,6 +45,10 @@ export const CONFIG = {
     wsFetchInterval: 1000,
     chromeCloseTimeout: 4000,
     loginAutofillSettle: 2000, // let browser autofill run before we clear + fill
+    typeMin: 100, // min per-keystroke delay (human-like typing)
+    typeMax: 1000, // max per-keystroke delay
+    beforeSubmitMin: 600, // min random wait before clicking Login
+    beforeSubmitMax: 1800, // max random wait before clicking Login
   },
 
   wsFetchRetries: 20,
@@ -65,6 +69,9 @@ const CHROME_PATH_CANDIDATES = [
 
 /** Absolute path to the local state file (kept at the project root, next to main.js). */
 const STATE_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", CONFIG.stateFile);
+
+/** Whether to run Chrome without a visible window (set HEADLESS=true in prod). */
+const isHeadless = () => /^(1|true|yes|on)$/i.test(process.env.HEADLESS || "");
 
 // Holds the connected browser so the shutdown handlers can close it.
 let browser;
@@ -126,6 +133,7 @@ function launchChrome(chromePath) {
     "--no-first-run",
     "--no-default-browser-check",
   ];
+  if (isHeadless()) args.push("--headless=new", "--window-size=1280,800");
   const child = spawn(chromePath, args, { detached: true, stdio: "ignore" });
   child.unref();
 }
@@ -161,7 +169,9 @@ export async function launchChromeAndConnect() {
   const chromePath = findChromePath();
   console.log(chalk.gray(` 🧭 Using Chrome: ${chromePath}`));
   console.log(
-    chalk.cyanBright(" 🚀 Launching Chrome with remote debugging on the dedicated debug profile...")
+    chalk.cyanBright(
+      ` 🚀 Launching Chrome (${isHeadless() ? "headless" : "visible"}) with remote debugging on the dedicated debug profile...`
+    )
   );
   launchChrome(chromePath);
 
@@ -189,35 +199,62 @@ async function verifyLoggedIn(page) {
   return !page.url().includes("login.php");
 }
 
-/** Fills the login form from env credentials and submits it. */
+/** Types `text` into `selector` one character at a time with random human-like pauses. */
+async function typeLikeHuman(page, selector, text) {
+  await page.focus(selector);
+  for (const ch of text) {
+    await page.keyboard.type(ch);
+    await sleep(randomInt(CONFIG.delays.typeMin, CONFIG.delays.typeMax));
+  }
+}
+
+/** Fills the login form from env credentials (human-like) and submits it. */
 async function autoLogin(page, username, password) {
   await ensureOnline();
+  console.log(chalk.cyan(" 🌐 Opening MAL login page..."));
   await page.goto(`${CONFIG.malBaseUrl}/login.php`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(CONFIG.selectors.loginUsername, { timeout: 10000 });
 
   // Let the browser / password manager autofill first, then clear those values so
   // we submit exactly what's in .env (not a stale autofilled login).
+  console.log(chalk.gray(` ⌛ Letting autofill settle (${CONFIG.delays.loginAutofillSettle}ms)...`));
   await sleep(CONFIG.delays.loginAutofillSettle);
+  console.log(chalk.gray(" 🧽 Clearing any autofilled values..."));
   await page.$eval(CONFIG.selectors.loginUsername, (el) => (el.value = ""));
   await page.$eval(CONFIG.selectors.loginPassword, (el) => (el.value = ""));
 
-  await page.type(CONFIG.selectors.loginUsername, username);
-  await page.type(CONFIG.selectors.loginPassword, password);
-  // Tick "remember me" so the session persists across runs.
+  console.log(chalk.blue(" ⌨️  Typing username..."));
+  await typeLikeHuman(page, CONFIG.selectors.loginUsername, username);
+
+  console.log(chalk.blue(" ⌨️  Typing password..."));
+  await typeLikeHuman(page, CONFIG.selectors.loginPassword, password);
+
+  console.log(chalk.gray(" ☑️  Enabling 'remember me'..."));
   await page.evaluate((sel) => {
     const c = document.querySelector(sel);
     if (c && !c.checked) c.click();
   }, CONFIG.selectors.loginRemember);
 
+  const wait = randomInt(CONFIG.delays.beforeSubmitMin, CONFIG.delays.beforeSubmitMax);
+  console.log(chalk.gray(` ⌛ Waiting ${wait}ms before clicking Login...`));
+  await sleep(wait);
+
+  console.log(chalk.cyanBright(" 🖱️  Clicking the Login button..."));
   await Promise.all([
     page.waitForNavigation({ waitUntil: "domcontentloaded" }).catch(() => {}),
     page.click(CONFIG.selectors.loginSubmit),
   ]);
+  console.log(chalk.gray(" ⌛ Waiting for MAL to respond..."));
   await sleep(CONFIG.delays.pageSettle);
 }
 
 /** Prompts the user to log in by hand, used when there are no env creds or auto-login fails. */
 async function manualLogin(page) {
+  if (isHeadless()) {
+    throw new Error(
+      "Manual login can't run in headless mode (no visible window). Set MAL_USERNAME and MAL_PASSWORD in .env, or unset HEADLESS."
+    );
+  }
   await ensureOnline();
   await page.goto(`${CONFIG.malBaseUrl}/login.php`, { waitUntil: "domcontentloaded" });
   await askQuestion(

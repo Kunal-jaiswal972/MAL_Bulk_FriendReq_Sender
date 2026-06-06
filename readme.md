@@ -130,10 +130,12 @@ first run, `ensureLoggedIn()` works through this order:
 
 1. **Saved flag** — if `isLoggedIn` is already `true`, skip straight to the request flow.
 2. **Existing session** — if the debug profile already has a live MAL session, record it and continue.
-3. **Auto-login from `.env`** — if `MAL_USERNAME` / `MAL_PASSWORD` are set, it fills
-   `login.php` and submits. It then **confirms login by loading `login.php` and checking
-   it redirects to the home page** (MAL only redirects away from `login.php` when
-   logged in). On success the session is saved.
+3. **Auto-login from `.env`** — if `MAL_USERNAME` / `MAL_PASSWORD` are set, it opens
+   `login.php`, waits for any autofill, clears the fields, and **types each character
+   with a random 100–1000 ms pause** (with a random pause before clicking **Login**)
+   to look human. Each step is logged in color. It then **confirms login by loading
+   `login.php` and checking it redirects to the home page** (MAL only redirects away
+   from `login.php` when logged in). On success the session is saved.
 4. **Manual fallback** — if there's no `.env`, or auto-login doesn't go through, it
    opens the login page and waits for you to log in by hand, then verifies the same way.
 
@@ -168,8 +170,9 @@ runs you can just press Enter to reuse it:
 |----------|---------|
 | `MAL_USERNAME` | MAL account username for auto-login. |
 | `MAL_PASSWORD` | MAL account password for auto-login. |
+| `HEADLESS` | `true`/`1`/`yes`/`on` runs Chrome with no visible window (servers / prod). Requires the credentials above — manual login needs a window. |
 
-Copy `.env.example` → `.env` and fill these in. Leave them out to use manual login.
+Copy `.env.example` → `.env` and fill these in. Leave the credentials out to use manual login.
 
 **Everything else** lives in the `CONFIG` object at the top of [`src/script.js`](src/script.js):
 
@@ -180,7 +183,7 @@ Copy `.env.example` → `.env` and fill these in. Leave them out to use manual l
 | `debugProfileDir` | The dedicated profile path you log into MAL once. |
 | `malBaseUrl` | MAL base URL. |
 | `selectors` | CSS selectors for the friends list, friend button, submit button, and **login form** (username/password/remember/submit) — update if MAL changes its markup. |
-| `delays` | All pacing/timeouts (between profiles, after a request, page settle, etc.). |
+| `delays` | All pacing/timeouts: between profiles, after a request, page settle, and the human-typing ranges (`typeMin`/`typeMax`, `beforeSubmitMin`/`beforeSubmitMax`). |
 | `wsFetchRetries` | How many times to poll the debugging endpoint before giving up. |
 
 Chrome install locations are in `CHROME_PATH_CANDIDATES` just below `CONFIG`.
