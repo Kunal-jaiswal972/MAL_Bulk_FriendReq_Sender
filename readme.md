@@ -136,8 +136,9 @@ first run, `ensureLoggedIn()` works through this order:
    to look human. Each step is logged in color. It then **confirms login by loading
    `login.php` and checking it redirects to the home page** (MAL only redirects away
    from `login.php` when logged in). On success the session is saved. If MAL rejects
-   the credentials, its error (e.g. *"Your username or password is incorrect."*) is
-   printed in red in the terminal.
+   the login credentials, its error is printed in red in the terminal — e.g.
+   *"Your username or password is incorrect."*, or after repeated failures
+   *"Too many failed login attempts. Please try to login again after several hours."*
 4. **Manual fallback** — if there's no `.env`, or auto-login doesn't go through, it
    opens the login page and waits for you to log in by hand, then verifies the same way.
 
@@ -210,6 +211,8 @@ hand. Two Windows-specific notes if you run elsewhere:
 |---------|-------------|
 | `Timed out waiting for .../json/version` | The debugging endpoint never came up. Usually another Chrome is already bound to the port, or Chrome failed to launch. Close stray Chrome on the debug profile and retry; check the port isn't taken. |
 | `Could not find chrome.exe ...` | Chrome isn't in a standard location. Add its path to `CHROME_PATH_CANDIDATES` in `script.js` (find it via `chrome://version` ➜ *Executable Path*). |
+| `MAL login error: Your username or password is incorrect.` | Wrong `MAL_USERNAME` / `MAL_PASSWORD` in `.env`. Fix them and re-run. |
+| `MAL login error: Too many failed login attempts. Please try to login again after several hours.` | MAL **rate-limited your IP** after repeated failed logins. There's no bypass — wait a few hours, then retry with correct credentials. (Getting your password right the first time avoids this.) |
 | Every profile logs *"Not a valid friend request URL"* | You're **not logged into MAL** in the debug profile (the request link points to `login.php`). Log in first (see First-run login). |
 | `Extracted 0 friend profile links` | The target user's friends list is private, or MAL changed its markup (update `CONFIG.selectors`). |
 | Port 9222 already in use | Find and kill the holder: `netstat -ano \| findstr :9222` then `taskkill /PID <PID> /F`, or change `CONFIG.debuggingPort`. |
